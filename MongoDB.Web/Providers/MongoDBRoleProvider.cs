@@ -27,7 +27,7 @@ namespace MongoDB.Web.Providers
                     throw new ProviderException(String.Format("The role '{0}' was not found.", roleName));
                 }
             }
-            
+
             foreach (var username in usernames)
             {
                 var membershipUser = Membership.GetUser(username);
@@ -36,7 +36,7 @@ namespace MongoDB.Web.Providers
                 {
                     throw new ProviderException(String.Format("The user '{0}' was not found.", username));
                 }
-                
+
                 foreach (var roleName in roleNames)
                 {
                     if (this.IsUserInRole(username, roleName))
@@ -59,7 +59,7 @@ namespace MongoDB.Web.Providers
         public override void CreateRole(string roleName)
         {
             var query = Query.And(Query.EQ("ApplicationName", this.ApplicationName), Query.EQ("Role", roleName));
-            
+
             if (this.rolesMongoCollection.FindAs<BsonDocument>(query).Count() > 0)
             {
                 throw new ProviderException(String.Format("The role '{0}' already exists.", roleName));
@@ -80,7 +80,7 @@ namespace MongoDB.Web.Providers
             {
                 throw new ProviderException(String.Format("The role '{0}' was not found.", roleName));
             }
-            
+
             var query = Query.And(Query.EQ("ApplicationName", this.ApplicationName), Query.EQ("Role", roleName));
 
             if (throwOnPopulatedRole && this.usersInRolesMongoCollection.FindAs<BsonDocument>(query).Count() > 0)
@@ -127,7 +127,7 @@ namespace MongoDB.Web.Providers
         {
             this.ApplicationName = config["applicationName"] ?? HostingEnvironment.ApplicationVirtualPath;
 
-            var mongoDatabase = MongoServer.Create(ConnectionHelper.GetDatabaseConnectionString(config)).GetDatabase(config["database"] ?? "ASPNETDB");
+            var mongoDatabase = ConnectionHelper.GetDatabase(config);
             this.rolesMongoCollection = mongoDatabase.GetCollection(config["collection"] ?? "Roles");
             this.usersInRolesMongoCollection = mongoDatabase.GetCollection("UsersInRoles");
 

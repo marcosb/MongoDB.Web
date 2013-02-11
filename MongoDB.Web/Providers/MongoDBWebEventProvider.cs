@@ -11,7 +11,7 @@ namespace MongoDB.Web.Providers
 
         public override void Initialize(string name, NameValueCollection config)
         {
-            this.mongoCollection = MongoServer.Create(ConnectionHelper.GetDatabaseConnectionString(config)).GetDatabase(config["database"] ?? "ASPNETDB").GetCollection(config["collection"] ?? "WebEvents");
+            this.mongoCollection = ConnectionHelper.GetDatabase(config).GetCollection(config["collection"] ?? "WebEvents");
 
             config.Remove("collection");
             config.Remove("connectionString");

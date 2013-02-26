@@ -8,6 +8,7 @@ using System.Web.Profile;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using MongoDB.Driver.Builders;
+using MongoDB.Bson.Serialization;
 
 namespace MongoDB.Web.Providers
 {
@@ -85,47 +86,27 @@ namespace MongoDB.Web.Providers
             var query = Query.And(Query.EQ("ApplicationName", this.ApplicationName), Query.EQ("Username", username));
             var bsonDocument = this.mongoCollection.FindOneAs<BsonDocument>(query);
 
-
-            // create new if not exists
-            if (bsonDocument == null)
-            {
-                bsonDocument = new BsonDocument
-                                   {    
-                                        { "_id", Guid.NewGuid() },
-                                        {"ApplicationName", this.ApplicationName},
-                                        {"Username", username},
-                                        {"IsAnonymous", false},
-                                        {"LastActivityDate", DateTime.Now},
-                                        {"LastUpdatedDate", DateTime.Now}
-                                    };
-
-                this.mongoCollection.Insert(bsonDocument);
-            }
-
-            // loop the property values, either from mongo or from defaults
             foreach (SettingsProperty settingsProperty in collection)
             {
                 var settingsPropertyValue = new SettingsPropertyValue(settingsProperty);
-
-                // exists in mongo
-                if (bsonDocument.Contains(settingsPropertyValue.Name))
-                {
-                    var value = bsonDocument[settingsPropertyValue.Name].RawValue;
-                    if (value != null)
-                    {
-                        settingsPropertyValue.PropertyValue = value;
-                    }
-                }
-                else if (!string.IsNullOrEmpty(settingsProperty.DefaultValue.ToString()))
-                {
-                    // property has specified default value in Web.Config
-                    // TODO: property types other than string needs some more work. Gives cast exception when accessed dynamic w/o having been set first
-                    // 
-                    settingsPropertyValue.PropertyValue = settingsProperty.DefaultValue;
-                }
-                settingsPropertyValue.Deserialized = true;
-                settingsPropertyValue.IsDirty = false;
                 settingsPropertyValueCollection.Add(settingsPropertyValue);
+
+                if (bsonDocument == null) continue;
+
+                BsonValue value;
+
+                if (!bsonDocument.TryGetValue(settingsPropertyValue.Name, out value)) 
+                    continue;
+
+                //If our BsonValue is a document we already happen to know what type it is
+                //so we'll just perform a quick deserialization and be on our way, happy as a clam
+                if (!value.IsBsonDocument)
+                    settingsPropertyValue.PropertyValue = value.RawValue;    
+                else
+                    settingsPropertyValue.PropertyValue = BsonSerializer.Deserialize(value.AsBsonDocument, settingsPropertyValue.Property.PropertyType);
+                
+                settingsPropertyValue.IsDirty = false;
+                settingsPropertyValue.Deserialized = true;
             }
 
             var update = Update.Set("LastActivityDate", DateTime.Now);
@@ -196,8 +177,21 @@ namespace MongoDB.Web.Providers
                 { "LastUpdatedDate", DateTime.Now }
             };
 
-            mergeDocument.Add(values as IDictionary<string, object>);
-            bsonDocument.Merge(mergeDocument, true);
+            var valuesDictionary = new Dictionary<string, object>();            
+            foreach (var v in values)
+            {
+                //Casting values to Dictionary<string, object> fails to serialize complex objects
+                //into BsonValue so we manually invoke bson serialization on complex objects and
+                //add the resulting dictionary to mergeDocument. _t will be added to object in 
+                //MongoDB collection to assist with deserialization.
+                BsonValue val;
+                if (MongoUtils.TryCreateBsonValue(v.Value, out val))
+                    valuesDictionary.Add(v.Key, val);
+                else         
+                    valuesDictionary.Add(v.Key.ToString(), v.Value.ToBsonDocument());
+            }
+            mergeDocument.Add(valuesDictionary);
+            bsonDocument.Merge(mergeDocument);
 
             this.mongoCollection.Save(bsonDocument);
         }
